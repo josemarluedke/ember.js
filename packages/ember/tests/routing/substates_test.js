@@ -1,3 +1,5 @@
+import { moduleFor, ApplicationTestCase } from 'internal-test-helpers';
+
 import { RSVP, Controller } from 'ember-runtime';
 import { Route, NoneLocation } from 'ember-routing';
 import { run } from 'ember-metal';
@@ -13,262 +15,300 @@ function step(expectedValue, description) {
   counter++;
 }
 
-function bootApplication(startingURL) {
-  for (let name in templates) {
-    setTemplate(name, compile(templates[name]));
-  }
+// function bootApplication(startingURL) {
+  // for (let name in templates) {
+    // setTemplate(name, compile(templates[name]));
+  // }
 
-  if (startingURL) {
-    NoneLocation.reopen({
-      path: startingURL
-    });
-  }
+  // if (startingURL) {
+    // NoneLocation.reopen({
+      // path: startingURL
+    // });
+  // }
 
-  startingURL = startingURL || '';
-  router = container.lookup('router:main');
-  run(App, 'advanceReadiness');
-}
+  // startingURL = startingURL || '';
+  // router = container.lookup('router:main');
+  // run(App, 'advanceReadiness');
+// }
 
-QUnit.module('Loading/Error Substates', {
-  setup() {
+
+
+moduleFor('Loading/Error Substates', class extends ApplicationTestCase {
+
+  constructor() {
+    super();
     counter = 1;
 
-    run(function() {
-      App = Application.create({
-        name: 'App',
-        rootElement: '#qunit-fixture',
-        // fake a modules resolver
-        Resolver: Resolver.extend({ moduleBasedResolver: true })
-      });
+    // templates = {
+      // application: '<div id="app">{{outlet}}</div>',
+      // index: 'INDEX',
+      // loading: 'LOADING',
+      // bro: 'BRO',
+      // sis: 'SIS'
+    // };
 
-      App.deferReadiness();
 
-      App.Router.reopen({
-        location: 'none'
-      });
-
-      Router = App.Router;
-
-      container = App.__container__;
-
-      templates = {
-        application: '<div id="app">{{outlet}}</div>',
-        index: 'INDEX',
-        loading: 'LOADING',
-        bro: 'BRO',
-        sis: 'SIS'
-      };
-    });
-  },
-
-  teardown() {
-    run(function() {
-      App.destroy();
-      App = null;
-
-      setTemplates({});
-    });
-
-    NoneLocation.reopen({
-      path: ''
-    });
+    this.addTemplate('application', '<div id="app">{{outlet}}</div>');
+    // this.addTemplate('index', 'INDEX');
   }
-});
 
-QUnit.test('Slow promise from a child route of application enters nested loading state', function() {
-  let broModel = {};
-  let broDeferred = RSVP.defer();
+  ['@test Slow promise from a child route of application enters nested loading state'](assert) {
+    assert.expect(4);
+    this.addTemplate('bro', 'BRO');
+    this.addTemplate('loading', 'LOADING');
 
-  Router.map(function() {
-    this.route('bro');
-  });
+    let broModel = {};
+    let broDeferred = RSVP.defer();
 
-  App.ApplicationRoute = Route.extend({
-    setupController() {
-      step(2, 'ApplicationRoute#setup');
-    }
-  });
+    this.router.map(function() {
+      this.route('bro');
+    });
 
-  App.BroRoute = Route.extend({
-    model() {
-      step(1, 'BroRoute#model');
-      return broDeferred.promise;
-    }
-  });
+    this.add('route:application', Route.extend({
+      setupController() {
+        step(2, 'ApplicationRoute#setup');
+      }
+    }));
 
-  bootApplication('/bro');
+    this.add('route:bro', Route.extend({
+      model() {
+        step(1, 'BroRoute#model');
+        return broDeferred.promise;
+      }
+    }));
 
-  equal(jQuery('#app', '#qunit-fixture').text(), 'LOADING', 'The Loading template is nested in application template\'s outlet');
+    run(() => this.visit('/bro'));
 
-  run(broDeferred, 'resolve', broModel);
+    assert.equal(this.$('#app').text(), 'LOADING', 'The Loading template is nested in application template\'s outlet');
 
-  equal(jQuery('#app', '#qunit-fixture').text(), 'BRO', 'bro template has loaded and replaced loading template');
-});
+    run(broDeferred, 'resolve', broModel);
 
-QUnit.test('Slow promises waterfall on startup', function() {
-  expect(7);
+    assert.equal(this.$('#app').text(), 'BRO', 'bro template has loaded and replaced loading template');
+  }
 
-  let grandmaDeferred = RSVP.defer();
-  let sallyDeferred = RSVP.defer();
+  ['@test Slow promises waterfall on startup'](assert) {
+    assert.expect(7);
 
-  Router.map(function() {
-    this.route('grandma', function() {
-      this.route('mom', { resetNamespace: true }, function() {
-        this.route('sally');
+    let grandmaDeferred = RSVP.defer();
+    let sallyDeferred = RSVP.defer();
+
+    this.router.map(function() {
+      this.route('grandma', function() {
+        this.route('mom', { resetNamespace: true }, function() {
+          this.route('sally');
+        });
       });
     });
-  });
 
-  templates.grandma = 'GRANDMA {{outlet}}';
-  templates.mom = 'MOM {{outlet}}';
-  templates['mom/loading'] = 'MOMLOADING';
-  templates['mom/sally'] = 'SALLY';
+    this.addTemplate('loading', 'LOADING');
+    this.addTemplate('grandma', 'GRANDMA {{outlet}}');
+    this.addTemplate('mom', 'MOM {{outlet}}');
+    this.addTemplate('mom.loading', 'MOMLOADING');
+    this.addTemplate('mom.sally', 'SALLY');
 
-  App.GrandmaRoute = Route.extend({
-    model() {
-      step(1, 'GrandmaRoute#model');
-      return grandmaDeferred.promise;
-    }
-  });
+    this.add('route:grandma', Route.extend({
+      model() {
+        step(1, 'GrandmaRoute#model');
+        return grandmaDeferred.promise;
+      }
+    }));
 
-  App.MomRoute = Route.extend({
-    model() {
-      step(2, 'Mom#model');
-      return {};
-    }
-  });
+    this.add('route:mom', Route.extend({
+      model() {
+        step(2, 'Mom#model');
+        return {};
+      }
+    }));
 
-  App.MomSallyRoute = Route.extend({
-    model() {
-      step(3, 'SallyRoute#model');
-      return sallyDeferred.promise;
-    },
-    setupController() {
-      step(4, 'SallyRoute#setupController');
-    }
-  });
+    // App.MomSallyRoute =
+    this.add('route:mom.sally', Route.extend({
+      model() {
+        step(3, 'SallyRoute#model');
+        return sallyDeferred.promise;
+      },
+      setupController() {
+        step(4, 'SallyRoute#setupController');
+      }
+    }));
 
-  bootApplication('/grandma/mom/sally');
+    run(() => this.visit('/grandma/mom/sally'));
 
-  equal(jQuery('#app', '#qunit-fixture').text(), 'LOADING', 'The Loading template is nested in application template\'s outlet');
+    assert.equal(this.$('#app').text(), 'LOADING', 'The Loading template is nested in application template\'s outlet');
 
-  run(grandmaDeferred, 'resolve', {});
-  equal(jQuery('#app', '#qunit-fixture').text(), 'GRANDMA MOM MOMLOADING', 'Mom\'s child loading route is displayed due to sally\'s slow promise');
+    run(grandmaDeferred, 'resolve', {});
+    assert.equal(this.$('#app').text(), 'GRANDMA MOM MOMLOADING', 'Mom\'s child loading route is displayed due to sally\'s slow promise');
 
-  run(sallyDeferred, 'resolve', {});
-  equal(jQuery('#app', '#qunit-fixture').text(), 'GRANDMA MOM SALLY', 'Sally template displayed');
-});
+    run(sallyDeferred, 'resolve', {});
+    assert.equal(this.$('#app').text(), 'GRANDMA MOM SALLY', 'Sally template displayed');
+  }
 
-QUnit.test('ApplicationRoute#currentPath reflects loading state path', function() {
-  expect(4);
 
-  let momDeferred = RSVP.defer();
+  ['@test ApplicationRoute#currentPath reflects loading state path'](assert) {
+    assert.expect(4);
 
-  Router.map(function() {
-    this.route('grandma', function() {
-      this.route('mom');
+    let momDeferred = RSVP.defer();
+
+    this.router.map(function() {
+      this.route('grandma', function() {
+        this.route('mom');
+      });
     });
-  });
 
-  templates.grandma = 'GRANDMA {{outlet}}';
-  templates['grandma/loading'] = 'GRANDMALOADING';
-  templates['grandma/mom'] = 'MOM';
+    // this.addTemplate('loading', 'LOADING');
+    this.addTemplate('grandma', 'GRANDMA {{outlet}}');
+    this.addTemplate('grandma.loading', 'GRANDMALOADING');
+    this.addTemplate('grandma.mom', 'MOM');
 
-  App.GrandmaMomRoute = Route.extend({
-    model() {
-      return momDeferred.promise;
-    }
-  });
+    this.add('route:grandma.mom', Route.extend({
+      model() {
+        return momDeferred.promise;
+      }
+    }));
 
-  bootApplication('/grandma/mom');
+    let instance;
+    run(() => this.visit('/grandma/mom'));
 
-  equal(jQuery('#app', '#qunit-fixture').text(), 'GRANDMA GRANDMALOADING');
+    equal(this.$('#app').text(), 'GRANDMA GRANDMALOADING');
 
-  let appController = container.lookup('controller:application');
-  equal(appController.get('currentPath'), 'grandma.loading', 'currentPath reflects loading state');
+    // let appController = this.application.__container__.lookup('controller:application');
+    let appController = this.applicationInstance.lookup('controller:application');
+    equal(appController.get('currentPath'), 'grandma.loading', 'currentPath reflects loading state');
 
-  run(momDeferred, 'resolve', {});
-  equal(jQuery('#app', '#qunit-fixture').text(), 'GRANDMA MOM');
-  equal(appController.get('currentPath'), 'grandma.mom', 'currentPath reflects final state');
+    run(momDeferred, 'resolve', {});
+    equal(this.$('#app').text(), 'GRANDMA MOM');
+    equal(appController.get('currentPath'), 'grandma.mom', 'currentPath reflects final state');
+  }
+
+  ['@test Slow promises returned from ApplicationRoute#model don\'t enter LoadingRoute'](assert) {
+    assert.expect(2);
+
+    let appDeferred = RSVP.defer();
+
+    this.addTemplate('index', 'INDEX');
+    this.add('route:application', Route.extend({
+      model() {
+        return appDeferred.promise;
+      }
+    }));
+
+    this.add('route:loading', Route.extend({
+      setupController() {
+        assert.ok(false, 'shouldn\'t get here');
+      }
+    }));
+
+    run(() => this.visit('/'));
+
+    assert.equal(this.$('#app').text(), '', 'nothing has been rendered yet');
+
+    run(appDeferred, 'resolve', {});
+    assert.equal(this.$('#app').text(), 'INDEX', 'renders the index template');
+  }
+
+  ['@test Don\'t enter loading route unless either route or template defined'](assert) {
+    assert.expect(2);
+
+    let indexDeferred = RSVP.defer();
+
+    this.add('controller:application', Controller.extend());
+
+    this.addTemplate('index', 'INDEX');
+    this.add('route:index', Route.extend({
+      model() {
+        return indexDeferred.promise;
+      }
+    }));
+
+    run(() => this.visit('/'));
+
+    let appController = this.applicationInstance.lookup('controller:application');
+    assert.ok(appController.get('currentPath') !== 'loading', 'loading state not entered');
+
+    run(indexDeferred, 'resolve', {});
+    assert.equal(this.$('#app').text(), 'INDEX');
+  }
+
+  ['@test Enter loading route if only LoadingRoute defined'](assert) {
+    assert.expect(4);
+
+    let indexDeferred = RSVP.defer();
+
+    this.addTemplate('index', 'INDEX');
+    this.add('route:index', Route.extend({
+      model() {
+        step(1, 'IndexRoute#model');
+        return indexDeferred.promise;
+      }
+    }));
+
+    this.add('route:loading', Route.extend({
+      setupController() {
+        step(2, 'LoadingRoute#setupController');
+      }
+    }));
+
+    run(() => this.visit('/'));
+
+    let appController = container.lookup('controller:application');
+    assert.equal(appController.get('currentPath'), 'loading', 'loading state entered');
+
+    run(indexDeferred, 'resolve', {});
+    assert.equal(this.$('#app').text(), 'INDEX');
+  }
+
 });
 
-QUnit.test('Slow promises returned from ApplicationRoute#model don\'t enter LoadingRoute', function() {
-  expect(2);
 
-  let appDeferred = RSVP.defer();
 
-  App.ApplicationRoute = Route.extend({
-    model() {
-      return appDeferred.promise;
-    }
-  });
 
-  App.LoadingRoute = Route.extend({
-    setupController() {
-      ok(false, 'shouldn\'t get here');
-    }
-  });
 
-  bootApplication();
 
-  equal(jQuery('#app', '#qunit-fixture').text(), '', 'nothing has been rendered yet');
 
-  run(appDeferred, 'resolve', {});
-  equal(jQuery('#app', '#qunit-fixture').text(), 'INDEX');
-});
 
-QUnit.test('Don\'t enter loading route unless either route or template defined', function() {
-  delete templates.loading;
 
-  expect(2);
 
-  let indexDeferred = RSVP.defer();
 
-  App.ApplicationController = Controller.extend();
 
-  App.IndexRoute = Route.extend({
-    model() {
-      return indexDeferred.promise;
-    }
-  });
 
-  bootApplication();
+// QUnit.module('Loading/Error Substates', {
+  // setup() {
+    // counter = 1;
 
-  let appController = container.lookup('controller:application');
-  ok(appController.get('currentPath') !== 'loading', 'loading state not entered');
+    // run(function() {
+      // App = Application.create({
+        // name: 'App',
+        // rootElement: '#qunit-fixture',
+        // // fake a modules resolver
+        // Resolver: Resolver.extend({ moduleBasedResolver: true })
+      // });
 
-  run(indexDeferred, 'resolve', {});
-  equal(jQuery('#app', '#qunit-fixture').text(), 'INDEX');
-});
+      // App.deferReadiness();
 
-QUnit.test('Enter loading route if only LoadingRoute defined', function() {
-  delete templates.loading;
+      // App.Router.reopen({
+        // location: 'none'
+      // });
 
-  expect(4);
+      // Router = App.Router;
 
-  let indexDeferred = RSVP.defer();
+      // container = App.__container__;
 
-  App.IndexRoute = Route.extend({
-    model() {
-      step(1, 'IndexRoute#model');
-      return indexDeferred.promise;
-    }
-  });
+    // });
+  // },
 
-  App.LoadingRoute = Route.extend({
-    setupController() {
-      step(2, 'LoadingRoute#setupController');
-    }
-  });
+  // teardown() {
+    // run(function() {
+      // App.destroy();
+      // App = null;
 
-  bootApplication();
+      // setTemplates({});
+    // });
 
-  let appController = container.lookup('controller:application');
-  equal(appController.get('currentPath'), 'loading', 'loading state entered');
+    // NoneLocation.reopen({
+      // path: ''
+    // });
+  // }
+// });
 
-  run(indexDeferred, 'resolve', {});
-  equal(jQuery('#app', '#qunit-fixture').text(), 'INDEX');
-});
 
 QUnit.test('Enter child loading state of pivot route', function() {
   expect(4);
